@@ -343,3 +343,8 @@ if __name__ == '__main__':
         logger.info('تم إنهاء البرنامج')
     except Exception as e:
         logger.error(f'خطأ في تشغيل البرنامج: {e}')
+async def main():
+    # تشغيل كل البوتات من التوكنات
+
+if __name__ == '__main__':
+    asyncio.run(main())
