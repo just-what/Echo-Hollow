@@ -1,6 +1,6 @@
 from keep_alive import keep_alive
 keep_alive()
-
+asyncio.run(main())
 import discord
 import asyncio
 import os
@@ -344,7 +344,4 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f'خطأ في تشغيل البرنامج: {e}')
 async def main():
-    # تشغيل كل البوتات من التوكنات
-
-if __name__ == '__main__':
-    asyncio.run(main())
+    # تشغيل كل البوتات من 
