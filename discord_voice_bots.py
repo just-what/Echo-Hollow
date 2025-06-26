@@ -1,6 +1,6 @@
 from keep_alive import keep_alive
 keep_alive()
-asyncio.run(main())
+
 import discord
 import asyncio
 import os
@@ -337,6 +337,7 @@ async def main():
                 await bot.close()
 
 if __name__ == '__main__':
+    asyncio.run(main())
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
