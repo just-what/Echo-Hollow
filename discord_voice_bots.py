@@ -15,7 +15,7 @@ logger = logging.getLogger('DiscordVoiceBots')
 load_dotenv()
 
 # معرف الفئة (Category ID) الذي تحتوي على القنوات الصوتية
-CATEGORY_ID = 1386381378844623128
+CATEGORY_ID = 1388113272074534922
 
 # معرف الرتبة التي يمكنها التحكم بالبوتات
 ADMIN_ROLE_ID = int(os.getenv('ADMIN_ROLE_ID', '0'))
