@@ -1,11 +1,8 @@
-from keep_alive import keep_alive
-keep_alive()
 import discord
 import asyncio
 import os
 from dotenv import load_dotenv
 import logging
-import random
 
 # إعداد التسجيل
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -32,10 +29,6 @@ class VoiceBot(discord.Client):
         self.token = token
         self.target_voice_channel_id = voice_channel_id
         self.voice_client = None
-        self.reconnect_task = None
-        self.is_reconnecting = False
-        self.reconnect_attempts = 0
-        self.max_reconnect_attempts = 5
         
     async def on_ready(self):
         logger.info(f'تم تسجيل الدخول كـ {self.user} (ID: {self.user.id})')
@@ -67,104 +60,23 @@ class VoiceBot(discord.Client):
                             return
     
     async def connect_to_voice_channel(self, channel_id):
-        if self.is_reconnecting:
-            logger.info(f'البوت {self.user} في حالة إعادة اتصال، تم تجاهل طلب الاتصال الجديد')
-            return
-            
         for guild in self.guilds:
             channel = guild.get_channel(channel_id)
             if channel and isinstance(channel, discord.VoiceChannel):
                 try:
-                    # تحقق مما إذا كان البوت متصل بالفعل بنفس القناة
-                    if (self.voice_client and 
-                        self.voice_client.is_connected() and 
-                        self.voice_client.channel.id == channel_id):
-                        logger.info(f'البوت {self.user} متصل بالفعل بالقناة {channel.name}')
-                        return
-                    
                     # تحقق مما إذا كان البوت متصل بالفعل بقناة أخرى
                     if self.voice_client and self.voice_client.is_connected():
                         logger.info(f'البوت {self.user} متصل بالفعل بقناة {self.voice_client.channel.name}، سيتم قطع الاتصال والانتقال إلى القناة الجديدة')
-                        try:
-                            await self.voice_client.disconnect(force=True)
-                        except:
-                            pass
-                        await asyncio.sleep(2)  # انتظار قبل الاتصال بالقناة الجديدة
+                        await self.voice_client.disconnect()
                     
-                    self.voice_client = await channel.connect(reconnect=False, timeout=30.0)
+                    self.voice_client = await channel.connect(reconnect=True)
                     logger.info(f'البوت {self.user} تم اتصاله بالقناة الصوتية: {channel.name} (ID: {channel.id})')
-                    self.reconnect_attempts = 0  # إعادة تعيين عداد المحاولات عند نجاح الاتصال
+                    # ابقى متصلاً بالقناة
                     
-                except discord.errors.ClientException as e:
-                    if "Already connected to a voice channel" in str(e):
-                        logger.error(f'خطأ في اتصال البوت {self.user} بالقناة الصوتية {channel.name}: {e}')
-                        # محاولة قطع الاتصال الحالي أولاً
-                        if self.voice_client:
-                            try:
-                                await self.voice_client.disconnect(force=True)
-                                await asyncio.sleep(3)  # انتظار أطول
-                                self.voice_client = await channel.connect(reconnect=False, timeout=30.0)
-                                logger.info(f'البوت {self.user} تم اتصاله بالقناة الصوتية: {channel.name} (ID: {channel.id}) بعد قطع الاتصال السابق')
-                                self.reconnect_attempts = 0
-                            except Exception as retry_error:
-                                logger.error(f'فشل في إعادة الاتصال بعد قطع الاتصال: {retry_error}')
-                    else:
-                        logger.error(f'خطأ في اتصال البوت {self.user} بالقناة الصوتية {channel.name}: {e}')
                 except Exception as e:
                     logger.error(f'خطأ في اتصال البوت {self.user} بالقناة الصوتية {channel.name}: {e}')
-    
-    async def schedule_reconnect(self, delay=None):
-        """جدولة إعادة الاتصال مع تأخير متزايد"""
-        if self.is_reconnecting:
-            return
-            
-        if self.reconnect_attempts >= self.max_reconnect_attempts:
-            logger.error(f'البوت {self.user} وصل إلى الحد الأقصى من محاولات إعادة الاتصال ({self.max_reconnect_attempts})')
-            return
-        
-        self.is_reconnecting = True
-        
-        if delay is None:
-            # تأخير متزايد: 5, 10, 20, 40, 80 ثانية
-            delay = min(5 * (2 ** self.reconnect_attempts), 80)
-            # إضافة عشوائية لتجنب التصادم
-            delay += random.uniform(1, 5)
-        
-        logger.info(f'البوت {self.user} سيحاول إعادة الاتصال خلال {delay:.1f} ثانية (المحاولة {self.reconnect_attempts + 1})')
-        
-        await asyncio.sleep(delay)
-        
-        try:
-            self.reconnect_attempts += 1
-            
-            if self.target_voice_channel_id:
-                logger.info(f'البوت {self.user} يحاول إعادة الاتصال بالقناة المخصصة له (ID: {self.target_voice_channel_id})')
-                await self.connect_to_voice_channel(self.target_voice_channel_id)
-            else:
-                logger.info(f'البوت {self.user} يحاول البحث عن قناة صوتية متاحة في الفئة المحددة')
-                await self.find_and_connect_to_voice_channel()
-                
-        except Exception as e:
-            logger.error(f'خطأ أثناء محاولة إعادة الاتصال للبوت {self.user}: {e}')
-        finally:
-            self.is_reconnecting = False
-    
-    async def on_voice_state_update(self, member, before, after):
-        # إذا تم فصل البوت من القناة، حاول إعادة الاتصال
-        if (member.id == self.user.id and 
-            before.channel and 
-            not after.channel and 
-            not self.is_reconnecting):
-            
-            logger.info(f'البوت {self.user} تم فصله من القناة الصوتية {before.channel.name}, جدولة إعادة الاتصال...')
-            
-            # إلغاء مهمة إعادة الاتصال السابقة إذا كانت موجودة
-            if self.reconnect_task and not self.reconnect_task.done():
-                self.reconnect_task.cancel()
-            
-            # جدولة إعادة اتصال جديدة
-            self.reconnect_task = asyncio.create_task(self.schedule_reconnect())
-    
+
+
     async def on_message(self, message):
         # تجاهل الرسائل من البوتات
         if message.author.bot:
@@ -190,13 +102,6 @@ class VoiceBot(discord.Client):
                 # تحديث القناة المخصصة للبوت
                 self.target_voice_channel_id = channel_id
                 
-                # إلغاء أي مهمة إعادة اتصال جارية
-                if self.reconnect_task and not self.reconnect_task.done():
-                    self.reconnect_task.cancel()
-                
-                self.is_reconnecting = False
-                self.reconnect_attempts = 0
-                
                 await self.connect_to_voice_channel(channel_id)
                 await message.channel.send(f'تم اتصال البوت {self.user.name} بالقناة الصوتية بمعرف: {channel_id}')
             except (IndexError, ValueError):
@@ -207,15 +112,7 @@ class VoiceBot(discord.Client):
             if self.voice_client and self.voice_client.is_connected():
                 channel_name = self.voice_client.channel.name
                 logger.info(f'المستخدم {message.author} طلب من البوت {self.user} مغادرة القناة الصوتية: {channel_name}')
-                
-                # إلغاء أي مهمة إعادة اتصال جارية
-                if self.reconnect_task and not self.reconnect_task.done():
-                    self.reconnect_task.cancel()
-                
-                self.is_reconnecting = False
-                self.target_voice_channel_id = None  # إزالة القناة المخصصة
-                
-                await self.voice_client.disconnect(force=True)
+                await self.voice_client.disconnect()
                 await message.channel.send(f'تم قطع اتصال البوت {self.user.name} من القناة الصوتية {channel_name}')
             else:
                 await message.channel.send(f'البوت {self.user.name} غير متصل بأي قناة صوتية')
@@ -226,32 +123,9 @@ class VoiceBot(discord.Client):
                 channel_name = self.voice_client.channel.name
                 channel_id = self.voice_client.channel.id
                 logger.info(f'المستخدم {message.author} طلب حالة البوت {self.user}')
-                status_text = f'البوت {self.user.name} متصل بالقناة الصوتية: {channel_name} (ID: {channel_id})'
-                if self.is_reconnecting:
-                    status_text += f'\n🔄 في حالة إعادة اتصال (المحاولة {self.reconnect_attempts}/{self.max_reconnect_attempts})'
-                await message.channel.send(status_text)
+                await message.channel.send(f'البوت {self.user.name} متصل بالقناة الصوتية: {channel_name} (ID: {channel_id})')
             else:
-                status_text = f'البوت {self.user.name} غير متصل بأي قناة صوتية'
-                if self.is_reconnecting:
-                    status_text += f'\n🔄 في حالة إعادة اتصال (المحاولة {self.reconnect_attempts}/{self.max_reconnect_attempts})'
-                await message.channel.send(status_text)
-        
-        elif message.content == '!reconnect':
-            # الأمر: !reconnect - إعادة اتصال فورية
-            logger.info(f'المستخدم {message.author} طلب من البوت {self.user} إعادة الاتصال')
-            
-            # إلغاء أي مهمة إعادة اتصال جارية
-            if self.reconnect_task and not self.reconnect_task.done():
-                self.reconnect_task.cancel()
-            
-            self.is_reconnecting = False
-            self.reconnect_attempts = 0
-            
-            if self.target_voice_channel_id:
-                await self.connect_to_voice_channel(self.target_voice_channel_id)
-                await message.channel.send(f'تم إعادة اتصال البوت {self.user.name}')
-            else:
-                await message.channel.send(f'لم يتم تحديد قناة صوتية للبوت {self.user.name}')
+                await message.channel.send(f'البوت {self.user.name} غير متصل بأي قناة صوتية')
         
         elif message.content == '!help':
             # الأمر: !help - إضافة أمر جديد للمساعدة
@@ -259,7 +133,6 @@ class VoiceBot(discord.Client):
 !join <channel_id> - للانضمام إلى قناة صوتية محددة
 !leave - لمغادرة القناة الصوتية الحالية
 !status - لعرض حالة اتصال البوت
-!reconnect - لإعادة الاتصال فوراً
 !help - لعرض هذه المساعدة"""
             await message.channel.send(help_text)
 
